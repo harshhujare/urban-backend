@@ -13,8 +13,12 @@ const userSchema = new mongoose.Schema(
     },
     email: {
       type: String,
-      required: [true, "Email is required"],
+      required: function () {
+        // Email required only for local auth
+        return this.authProvider === "local";
+      },
       unique: true,
+      sparse: true, // Allows null values while maintaining uniqueness
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, "Please provide a valid email"],
@@ -38,11 +42,20 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "", // Cloudinary URL (Week 3)
     },
-    // Future: Phone verification fields (for OTP auth)
+    // Phone verification fields (for OTP auth)
     phone: {
       type: String,
+      unique: true,
       sparse: true, // Allows null values while maintaining uniqueness
       default: null,
+      validate: {
+        validator: function (v) {
+          // If phone is provided, validate India format: +91 followed by 10 digits
+          if (!v) return true; // Allow null/undefined
+          return /^\+91[0-9]{10}$/.test(v);
+        },
+        message: "Phone number must be in format: +91 followed by 10 digits",
+      },
     },
     phoneVerified: {
       type: Boolean,

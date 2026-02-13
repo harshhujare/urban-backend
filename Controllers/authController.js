@@ -2,6 +2,8 @@ import asyncHandler from "../utils/asyncHandler.js";
 import ErrorResponse from "../utils/ErrorResponse.js";
 import { User } from "../Models/index.js";
 import sendTokenResponse from "../utils/sendTokenResponse.js";
+import { sendOTP, verifyOTP as verifyOTPCode } from "../services/otpService.js";
+import { verifyGoogleToken } from "../services/googleAuthService.js";
 
 // @desc    Register user
 // @route   POST /api/auth/register
@@ -186,4 +188,155 @@ export const updateProfile = asyncHandler(async (req, res, next) => {
       createdAt: user.createdAt,
     },
   });
+});
+// ==================== PHONE/OTP AUTHENTICATION ====================
+
+// @desc    Send OTP to phone number
+// @route   POST /api/auth/send-otp
+// @access  Public
+export const sendOtp = asyncHandler(async (req, res, next) => {
+  const { phoneNumber } = req.body;
+
+  // Validate phone number
+  if (!phoneNumber) {
+    return next(new ErrorResponse("Please provide a phone number", 400));
+  }
+
+  // Normalize phone number (ensure +91 prefix)
+  let normalizedPhone = phoneNumber.trim();
+  if (!normalizedPhone.startsWith("+91")) {
+    // If user entered without country code, add +91
+    normalizedPhone = `+91${normalizedPhone.replace(/^0+/, "")}`;
+  }
+
+  // Send OTP via Twilio
+  const result = await sendOTP(normalizedPhone);
+
+  if (!result.success) {
+    return next(new ErrorResponse(result.message, 400));
+  }
+
+  // Check if user exists with this phone number
+  const existingUser = await User.findOne({ phone: normalizedPhone });
+  const isNewUser = !existingUser;
+
+  res.status(200).json({
+    success: true,
+    message: result.message,
+    expiresIn: result.expiresIn,
+    isNewUser, // Tell frontend if this is a new user
+  });
+});
+
+// @desc    Verify OTP and login/register user
+// @route   POST /api/auth/verify-otp
+// @access  Public
+export const verifyOtp = asyncHandler(async (req, res, next) => {
+  const { phoneNumber, otp, name, role } = req.body;
+
+  // Validate required fields
+  if (!phoneNumber || !otp) {
+    return next(new ErrorResponse("Please provide phone number and OTP", 400));
+  }
+
+  // Normalize phone number
+  let normalizedPhone = phoneNumber.trim();
+  if (!normalizedPhone.startsWith("+91")) {
+    normalizedPhone = `+91${normalizedPhone.replace(/^0+/, "")}`;
+  }
+
+  // Verify OTP
+  const otpResult = verifyOTPCode(normalizedPhone, otp.toString());
+
+  if (!otpResult.verified) {
+    return next(new ErrorResponse(otpResult.message, 400));
+  }
+
+  // Check if user exists with this phone number
+  let user = await User.findOne({ phone: normalizedPhone });
+
+  if (user) {
+    // Existing user - login
+    user.phoneVerified = true;
+    await user.save();
+    sendTokenResponse(user, 200, res);
+  } else {
+    // New user - register
+    if (!name) {
+      return next(
+        new ErrorResponse(
+          "Please provide your name to complete registration",
+          400,
+        ),
+      );
+    }
+
+    user = await User.create({
+      name,
+      phone: normalizedPhone,
+      phoneVerified: true,
+      authProvider: "phone",
+      role: role || "guest",
+    });
+
+    sendTokenResponse(user, 201, res);
+  }
+});
+
+// ==================== GOOGLE AUTHENTICATION ====================
+
+// @desc    Login/Register with Google
+// @route   POST /api/auth/google-login
+// @access  Public
+export const googleLogin = asyncHandler(async (req, res, next) => {
+  const { credential, role } = req.body;
+
+  // Validate credential
+  if (!credential) {
+    return next(new ErrorResponse("Please provide Google credential", 400));
+  }
+
+  // Verify Google token
+  let googleUser;
+  try {
+    googleUser = await verifyGoogleToken(credential);
+  } catch (error) {
+    return next(new ErrorResponse("Invalid Google credential", 401));
+  }
+
+  // Check if user exists with this Google ID
+  let user = await User.findOne({ googleId: googleUser.googleId });
+
+  if (user) {
+    // Existing user - login
+    // Update profile photo if changed
+    if (user.profilePhoto !== googleUser.profilePhoto) {
+      user.profilePhoto = googleUser.profilePhoto;
+      await user.save();
+    }
+    sendTokenResponse(user, 200, res);
+  } else {
+    // Check if email already exists with different auth provider
+    const existingEmailUser = await User.findOne({ email: googleUser.email });
+    if (existingEmailUser) {
+      return next(
+        new ErrorResponse(
+          `An account with this email already exists using ${existingEmailUser.authProvider} authentication. Please login with ${existingEmailUser.authProvider}.`,
+          400,
+        ),
+      );
+    }
+
+    // New user - register
+    user = await User.create({
+      name: googleUser.name,
+      email: googleUser.email,
+      googleId: googleUser.googleId,
+      profilePhoto: googleUser.profilePhoto,
+      authProvider: "google",
+      role: role || "guest",
+    });
+
+    sendTokenResponse(user, 201, res);
+  }
 });

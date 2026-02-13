@@ -16,12 +16,14 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
+    "google-auth-library": "^10.5.0",
     "http-status": "^2.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.16.1",
     "multer": "^2.0.2",
     "multer-storage-cloudinary": "^2.2.1",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "twilio": "^5.12.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
