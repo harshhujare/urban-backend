@@ -5,7 +5,7 @@ import sendTokenResponse from "../utils/sendTokenResponse.js";
 
 // @desc    Register user
 // @route   POST /api/auth/register
-// @access  Public 
+// @access  Public
 export const register = asyncHandler(async (req, res, next) => {
   const { name, email, password, role } = req.body;
 
@@ -108,6 +108,80 @@ export const getMe = asyncHandler(async (req, res, next) => {
       email: user.email,
       role: user.role,
       profilePhoto: user.profilePhoto,
+      phone: user.phone,
+      authProvider: user.authProvider,
+      createdAt: user.createdAt,
+    },
+  });
+});
+
+// @desc    Update user profile
+// @route   PUT /api/auth/me
+// @access  Private
+export const updateProfile = asyncHandler(async (req, res, next) => {
+  const { name, email, phone, profilePhoto } = req.body;
+
+  // Find user
+  const user = await User.findById(req.user.id);
+
+  if (!user) {
+    return next(new ErrorResponse("User not found", 404));
+  }
+
+  // Validate name if provided
+  if (name !== undefined) {
+    if (!name || name.trim().length < 2) {
+      return next(new ErrorResponse("Name must be at least 2 characters", 400));
+    }
+    if (name.trim().length > 50) {
+      return next(new ErrorResponse("Name cannot exceed 50 characters", 400));
+    }
+    user.name = name.trim();
+  }
+
+  // Validate email if provided and check for conflicts
+  if (email !== undefined) {
+    const emailRegex = /^\S+@\S+\.\S+$/;
+    if (!emailRegex.test(email)) {
+      return next(new ErrorResponse("Please provide a valid email", 400));
+    }
+
+    // Check if email is already taken by another user
+    if (email !== user.email) {
+      const existingUser = await User.findOne({ email: email.toLowerCase() });
+      if (existingUser) {
+        return next(
+          new ErrorResponse("Email is already in use by another account", 400),
+        );
+      }
+    }
+
+    user.email = email.toLowerCase();
+  }
+
+  // Update phone if provided
+  if (phone !== undefined) {
+    user.phone = phone || null;
+  }
+
+  // Update profile photo if provided
+  if (profilePhoto !== undefined) {
+    user.profilePhoto = profilePhoto;
+  }
+
+  // Save updated user
+  await user.save();
+
+  res.status(200).json({
+    success: true,
+    message: "Profile updated successfully",
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      profilePhoto: user.profilePhoto,
+      phone: user.phone,
       authProvider: user.authProvider,
       createdAt: user.createdAt,
     },

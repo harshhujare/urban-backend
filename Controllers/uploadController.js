@@ -86,7 +86,7 @@ export const deleteImage = asyncHandler(async (req, res, next) => {
   }
 });
 
-// @desc    Upload single profile picture
+// @desc    Upload single profile picture (with old image cleanup)
 // @route   POST /api/upload/profile-picture
 // @access  Private
 export const uploadProfilePicture = asyncHandler(async (req, res, next) => {
@@ -95,6 +95,36 @@ export const uploadProfilePicture = asyncHandler(async (req, res, next) => {
   }
 
   try {
+    // Get user to check for existing profile photo
+    const { User } = await import("../Models/index.js");
+    const user = await User.findById(req.user.id);
+
+    // Delete old profile picture from Cloudinary if exists
+    if (user && user.profilePhoto) {
+      try {
+        // Extract public_id from Cloudinary URL
+        // URL format: https://res.cloudinary.com/{cloud_name}/image/upload/{transformations}/{public_id}.{format}
+        const urlParts = user.profilePhoto.split("/");
+        const uploadIndex = urlParts.indexOf("upload");
+
+        if (uploadIndex !== -1 && uploadIndex < urlParts.length - 1) {
+          // Get everything after 'upload/' and before the file extension
+          const publicIdWithExt = urlParts.slice(uploadIndex + 1).join("/");
+          const publicId = publicIdWithExt.substring(
+            0,
+            publicIdWithExt.lastIndexOf("."),
+          );
+
+          // Delete old image from Cloudinary
+          await cloudinary.uploader.destroy(publicId);
+        }
+      } catch (deleteError) {
+        // Log error but don't fail the upload if old image deletion fails
+        console.error("Failed to delete old profile picture:", deleteError);
+      }
+    }
+
+    // Upload new profile picture
     const result = await cloudinary.uploader.upload(req.file.path, {
       folder: "urbanstay/profiles",
       transformation: [
@@ -104,14 +134,27 @@ export const uploadProfilePicture = asyncHandler(async (req, res, next) => {
       ],
     });
 
+    console.log("=== CLOUDINARY UPLOAD RESULT ===");
+    console.log("Full result object:", JSON.stringify(result, null, 2));
+    console.log("secure_url:", result.secure_url);
+    console.log("url:", result.url);
+    console.log("public_id:", result.public_id);
+    console.log("===============================");
+
     // Delete temporary file
     fs.unlinkSync(req.file.path);
 
-    res.status(200).json({
+    const responseData = {
       success: true,
       image: result.secure_url,
       publicId: result.public_id,
-    });
+    };
+
+    console.log("=== SENDING RESPONSE ===");
+    console.log(JSON.stringify(responseData, null, 2));
+    console.log("=======================");
+
+    res.status(200).json(responseData);
   } catch (error) {
     // Clean up file if upload fails
     if (req.file && fs.existsSync(req.file.path)) {
