@@ -78,6 +78,22 @@ export const getProperty = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse("Property not found", 404));
   }
 
+  // Track view (fire-and-forget, don't block response)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  Property.findOneAndUpdate(
+    { _id: property._id, "viewHistory.date": today },
+    { $inc: { views: 1, "viewHistory.$.count": 1 } },
+  ).then((result) => {
+    if (!result) {
+      // No entry for today yet, push a new one
+      Property.findByIdAndUpdate(property._id, {
+        $inc: { views: 1 },
+        $push: { viewHistory: { date: today, count: 1 } },
+      }).exec();
+    }
+  });
+
   res.status(200).json({
     success: true,
     data: property,
@@ -359,6 +375,11 @@ export const getOwnerContact = asyncHandler(async (req, res, next) => {
   req.user.contactViewsUsed += 1;
   await req.user.save({ validateBeforeSave: false });
 
+  // Increment contactRequests on property
+  Property.findByIdAndUpdate(req.params.id, {
+    $inc: { contactRequests: 1 },
+  }).exec();
+
   res.status(200).json({
     success: true,
     data: {
@@ -369,5 +390,45 @@ export const getOwnerContact = asyncHandler(async (req, res, next) => {
     limit: limits.contactViews,
     used: req.user.contactViewsUsed,
     accountType: req.user.accountType,
+  });
+});
+
+// @desc    Get property analytics/stats (for host dashboard)
+// @route   GET /api/properties/:id/stats
+// @access  Private (Owner only)
+export const getPropertyStats = asyncHandler(async (req, res, next) => {
+  const property = await Property.findById(req.params.id).select(
+    "views likes contactRequests viewHistory hostId title",
+  );
+
+  if (!property) {
+    return next(new ErrorResponse("Property not found", 404));
+  }
+
+  // Only owner can see stats
+  if (property.hostId.toString() !== req.user.id && req.user.role !== "admin") {
+    return next(
+      new ErrorResponse("Not authorized to view stats for this property", 403),
+    );
+  }
+
+  // Get last 30 days of view history
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  thirtyDaysAgo.setHours(0, 0, 0, 0);
+
+  const recentHistory = (property.viewHistory || [])
+    .filter((entry) => new Date(entry.date) >= thirtyDaysAgo)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  res.status(200).json({
+    success: true,
+    data: {
+      title: property.title,
+      views: property.views || 0,
+      likes: property.likes || 0,
+      contactRequests: property.contactRequests || 0,
+      viewHistory: recentHistory,
+    },
   });
 });

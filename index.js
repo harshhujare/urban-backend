@@ -52,6 +52,7 @@ app.get("/api/health", (req, res) => {
 import authRoutes from "./Routes/authRoutes.js";
 import propertyRoutes from "./Routes/propertyRoutes.js";
 import uploadRoutes from "./Routes/uploadRoutes.js";
+import paymentRoutes from "./Routes/paymentRoutes.js";
 
 // Auth routes
 app.use("/api/auth", authRoutes);
@@ -61,6 +62,9 @@ app.use("/api/properties", propertyRoutes);
 
 // Upload routes
 app.use("/api/upload", uploadRoutes);
+
+// Payment routes
+app.use("/api/payment", paymentRoutes);
 
 // Future routes
 // app.use("/api/bookings", bookingRoutes);

@@ -8,6 +8,7 @@ import {
   getMyProperties,
   getUserProperties,
   getOwnerContact,
+  getPropertyStats,
 } from "../Controllers/propertyController.js";
 import { protect, authorize } from "../middleware/auth.js";
 
@@ -26,7 +27,10 @@ router.post("/", protect, createProperty);
 // Get owner contact details (protected, checks account limits)
 router.get("/:id/contact", protect, getOwnerContact);
 
-// Single property route (must be after /my and /:id/contact)
+// Get property analytics/stats (owner only)
+router.get("/:id/stats", protect, getPropertyStats);
+
+// Single property route (must be after /my and /:id/contact and /:id/stats)
 router.get("/:id", getProperty);
 
 // Update/Delete property (only host/owner)

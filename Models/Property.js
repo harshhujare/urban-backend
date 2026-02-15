@@ -88,6 +88,25 @@ const propertySchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // Analytics fields
+    views: {
+      type: Number,
+      default: 0,
+    },
+    likes: {
+      type: Number,
+      default: 0,
+    },
+    contactRequests: {
+      type: Number,
+      default: 0,
+    },
+    viewHistory: [
+      {
+        date: { type: Date },
+        count: { type: Number, default: 0 },
+      },
+    ],
   },
   {
     timestamps: true,
