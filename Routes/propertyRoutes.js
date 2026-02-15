@@ -7,6 +7,7 @@ import {
   deleteProperty,
   getMyProperties,
   getUserProperties,
+  getOwnerContact,
 } from "../Controllers/propertyController.js";
 import { protect, authorize } from "../middleware/auth.js";
 
@@ -22,7 +23,10 @@ router.get("/user/:userId", getUserProperties);
 // Create property (guest can create, will auto-upgrade to host)
 router.post("/", protect, createProperty);
 
-// Single property route (must be after /my)
+// Get owner contact details (protected, checks account limits)
+router.get("/:id/contact", protect, getOwnerContact);
+
+// Single property route (must be after /my and /:id/contact)
 router.get("/:id", getProperty);
 
 // Update/Delete property (only host/owner)

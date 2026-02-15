@@ -1,30 +1,30 @@
 import express from "express";
 import {
-  register,
-  login,
   logout,
   getMe,
   updateProfile,
   sendOtp,
   verifyOtp,
   googleLogin,
+  completeSignup,
 } from "../Controllers/authController.js";
 import { protect } from "../middleware/auth.js";
 
 const router = express.Router();
 
-// Public routes - Email/Password
-router.post("/register", register);
-router.post("/login", login);
+// ==================== PUBLIC ROUTES ====================
 
-// Public routes - Phone/OTP
+// Phone/OTP Authentication
 router.post("/send-otp", sendOtp);
 router.post("/verify-otp", verifyOtp);
 
-// Public routes - Google Auth
+// Google Authentication
 router.post("/google-login", googleLogin);
 
-// Protected routes - require authentication
+// Complete Signup (after phone verification)
+router.post("/complete-signup", completeSignup);
+
+// ==================== PROTECTED ROUTES ====================
 router.post("/logout", protect, logout);
 router.get("/me", protect, getMe);
 router.put("/me", protect, updateProfile);

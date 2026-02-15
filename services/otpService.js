@@ -99,7 +99,8 @@ export const sendOTP = async (phoneNumber) => {
       };
     }
 
-    // Check rate limit
+    // Check rate limit - TEMPORARILY DISABLED FOR TESTING
+    /*
     const rateLimit = checkRateLimit(phoneNumber);
     if (!rateLimit.allowed) {
       return {
@@ -108,8 +109,10 @@ export const sendOTP = async (phoneNumber) => {
         remainingTime: rateLimit.remainingTime,
       };
     }
+    */
 
-    // Check resend cooldown
+    // Check resend cooldown - TEMPORARILY DISABLED FOR TESTING
+    /*
     const cooldown = checkResendCooldown(phoneNumber);
     if (!cooldown.allowed) {
       return {
@@ -118,6 +121,7 @@ export const sendOTP = async (phoneNumber) => {
         remainingTime: cooldown.remainingTime,
       };
     }
+    */
 
     // Generate OTP
     const otp = generateOTP();

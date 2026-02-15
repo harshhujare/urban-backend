@@ -13,22 +13,21 @@ const userSchema = new mongoose.Schema(
     },
     email: {
       type: String,
-      required: function () {
-        // Email required only for local auth
-        return this.authProvider === "local";
-      },
+      required: false, // Email is optional (comes from Google)
       unique: true,
       sparse: true, // Allows null values while maintaining uniqueness
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, "Please provide a valid email"],
     },
+    city: {
+      type: String,
+      required: [true, "City is required"],
+      trim: true,
+    },
     password: {
       type: String,
-      required: function () {
-        // Password required only for local auth
-        return this.authProvider === "local";
-      },
+      required: false, // Password no longer used
       minlength: [6, "Password must be at least 6 characters"],
       select: false, // Don't return password in queries by default
     },
@@ -42,16 +41,14 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "", // Cloudinary URL (Week 3)
     },
-    // Phone verification fields (for OTP auth)
+    // Phone verification fields (required for all users)
     phone: {
       type: String,
+      required: [true, "Phone number is required"],
       unique: true,
-      sparse: true, // Allows null values while maintaining uniqueness
-      default: null,
       validate: {
         validator: function (v) {
-          // If phone is provided, validate India format: +91 followed by 10 digits
-          if (!v) return true; // Allow null/undefined
+          // Validate India format: +91 followed by 10 digits
           return /^\+91[0-9]{10}$/.test(v);
         },
         message: "Phone number must be in format: +91 followed by 10 digits",
@@ -61,6 +58,30 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Account type (free or premium)
+    accountType: {
+      type: String,
+      enum: ["free", "premium"],
+      default: "free",
+    },
+    // Monthly contact view tracking
+    contactViewsUsed: {
+      type: Number,
+      default: 0,
+    },
+    contactViewsResetDate: {
+      type: Date,
+      default: Date.now,
+    },
+    // Monthly property listing tracking
+    propertiesListedThisMonth: {
+      type: Number,
+      default: 0,
+    },
+    propertiesListedResetDate: {
+      type: Date,
+      default: Date.now,
+    },
     // Future: OAuth fields (for Google, Facebook, etc.)
     googleId: {
       type: String,
@@ -69,8 +90,8 @@ const userSchema = new mongoose.Schema(
     },
     authProvider: {
       type: String,
-      enum: ["local", "google", "phone"], // Can add more providers
-      default: "local",
+      enum: ["phone", "google"], // Removed "local" - no more email/password
+      default: "phone",
     },
   },
   {
@@ -80,10 +101,10 @@ const userSchema = new mongoose.Schema(
 
 // ==================== MIDDLEWARE ====================
 
-// Hash password before saving (only for local auth)
+// Hash password before saving (legacy - password no longer used for auth)
 userSchema.pre("save", async function (next) {
-  // Skip hashing if using OAuth or phone auth without password
-  if (this.authProvider !== "local") return next();
+  // Skip if no password provided
+  if (!this.password) return next();
 
   // Only hash if password is modified
   if (!this.isModified("password")) return next();
@@ -131,6 +152,41 @@ userSchema.methods.upgradeToHost = async function () {
     await this.save();
   }
   return this;
+};
+
+// Helper: Get account limits based on accountType
+userSchema.methods.getAccountLimits = function () {
+  if (this.accountType === "premium") {
+    return { contactViews: 10, propertyListings: 20 };
+  }
+  return { contactViews: 1, propertyListings: 2 };
+};
+
+// Helper: Reset monthly counters if a new month has started
+userSchema.methods.resetMonthlyCountersIfNeeded = async function () {
+  const now = new Date();
+
+  // Reset contact views if month changed
+  const contactReset = this.contactViewsResetDate || new Date(0);
+  if (
+    now.getMonth() !== contactReset.getMonth() ||
+    now.getFullYear() !== contactReset.getFullYear()
+  ) {
+    this.contactViewsUsed = 0;
+    this.contactViewsResetDate = now;
+  }
+
+  // Reset property listings if month changed
+  const listingReset = this.propertiesListedResetDate || new Date(0);
+  if (
+    now.getMonth() !== listingReset.getMonth() ||
+    now.getFullYear() !== listingReset.getFullYear()
+  ) {
+    this.propertiesListedThisMonth = 0;
+    this.propertiesListedResetDate = now;
+  }
+
+  await this.save({ validateBeforeSave: false });
 };
 
 const User = mongoose.model("User", userSchema);

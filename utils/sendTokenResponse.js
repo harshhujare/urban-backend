@@ -32,6 +32,7 @@ const sendTokenResponse = (user, statusCode, res) => {
         role: user.role,
         profilePhoto: user.profilePhoto,
         authProvider: user.authProvider,
+        accountType: user.accountType || "free",
       },
     });
 };

@@ -88,6 +88,20 @@ export const getProperty = asyncHandler(async (req, res, next) => {
 // @route   POST /api/properties
 // @access  Private (Guest can create, will auto-upgrade to Host)
 export const createProperty = asyncHandler(async (req, res, next) => {
+  // Reset monthly counters if needed
+  await req.user.resetMonthlyCountersIfNeeded();
+
+  // Check property listing limit
+  const limits = req.user.getAccountLimits();
+  if (req.user.propertiesListedThisMonth >= limits.propertyListings) {
+    return next(
+      new ErrorResponse(
+        `You have reached your monthly listing limit (${limits.propertyListings} for ${req.user.accountType} accounts). Upgrade to Premium for more listings.`,
+        403,
+      ),
+    );
+  }
+
   // Upgrade user to host if they're a guest
   if (req.user.role === "guest") {
     await req.user.upgradeToHost();
@@ -144,6 +158,10 @@ export const createProperty = asyncHandler(async (req, res, next) => {
   };
 
   const property = await Property.create(propertyData);
+
+  // Increment monthly listing counter
+  req.user.propertiesListedThisMonth += 1;
+  await req.user.save({ validateBeforeSave: false });
 
   res.status(201).json({
     success: true,
@@ -298,5 +316,58 @@ export const getUserProperties = asyncHandler(async (req, res, next) => {
     success: true,
     count: properties.length,
     data: properties,
+  });
+});
+
+// @desc    Get owner contact details
+// @route   GET /api/properties/:id/contact
+// @access  Private
+export const getOwnerContact = asyncHandler(async (req, res, next) => {
+  // Find the property and populate host phone
+  const property = await Property.findById(req.params.id).populate(
+    "hostId",
+    "name phone",
+  );
+
+  if (!property) {
+    return next(new ErrorResponse("Property not found", 404));
+  }
+
+  if (!property.hostId) {
+    return next(new ErrorResponse("Owner information not available", 404));
+  }
+
+  // Reset monthly counters if needed
+  await req.user.resetMonthlyCountersIfNeeded();
+
+  // Check contact view limit
+  const limits = req.user.getAccountLimits();
+  const remaining = limits.contactViews - req.user.contactViewsUsed;
+
+  if (remaining <= 0) {
+    return res.status(403).json({
+      success: false,
+      error: `You have reached your monthly contact view limit (${limits.contactViews} for ${req.user.accountType} accounts). Upgrade to Premium for more contact views.`,
+      limitReached: true,
+      accountType: req.user.accountType,
+      limit: limits.contactViews,
+      used: req.user.contactViewsUsed,
+    });
+  }
+
+  // Increment contact views counter
+  req.user.contactViewsUsed += 1;
+  await req.user.save({ validateBeforeSave: false });
+
+  res.status(200).json({
+    success: true,
+    data: {
+      ownerName: property.hostId.name,
+      ownerPhone: property.hostId.phone,
+    },
+    remaining: limits.contactViews - req.user.contactViewsUsed,
+    limit: limits.contactViews,
+    used: req.user.contactViewsUsed,
+    accountType: req.user.accountType,
   });
 });

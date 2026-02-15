@@ -5,6 +5,10 @@ import sendTokenResponse from "../utils/sendTokenResponse.js";
 import { sendOTP, verifyOTP as verifyOTPCode } from "../services/otpService.js";
 import { verifyGoogleToken } from "../services/googleAuthService.js";
 
+// ==================== DEPRECATED: OLD EMAIL/PASSWORD AUTH ====================
+// These endpoints are no longer used in the unified auth system
+
+/*
 // @desc    Register user
 // @route   POST /api/auth/register
 // @access  Public
@@ -75,6 +79,9 @@ export const login = asyncHandler(async (req, res, next) => {
   // Send token response
   sendTokenResponse(user, 200, res);
 });
+*/
+
+// ==================== ACTIVE AUTH ENDPOINTS ====================
 
 // @desc    Logout user / clear cookie
 // @route   POST /api/auth/logout
@@ -112,6 +119,9 @@ export const getMe = asyncHandler(async (req, res, next) => {
       profilePhoto: user.profilePhoto,
       phone: user.phone,
       authProvider: user.authProvider,
+      accountType: user.accountType || "free",
+      contactViewsUsed: user.contactViewsUsed || 0,
+      propertiesListedThisMonth: user.propertiesListedThisMonth || 0,
       createdAt: user.createdAt,
     },
   });
@@ -121,7 +131,7 @@ export const getMe = asyncHandler(async (req, res, next) => {
 // @route   PUT /api/auth/me
 // @access  Private
 export const updateProfile = asyncHandler(async (req, res, next) => {
-  const { name, email, phone, profilePhoto } = req.body;
+  const { name, profilePhoto } = req.body;
 
   // Find user
   const user = await User.findById(req.user.id);
@@ -141,38 +151,13 @@ export const updateProfile = asyncHandler(async (req, res, next) => {
     user.name = name.trim();
   }
 
-  // Validate email if provided and check for conflicts
-  if (email !== undefined) {
-    const emailRegex = /^\S+@\S+\.\S+$/;
-    if (!emailRegex.test(email)) {
-      return next(new ErrorResponse("Please provide a valid email", 400));
-    }
-
-    // Check if email is already taken by another user
-    if (email !== user.email) {
-      const existingUser = await User.findOne({ email: email.toLowerCase() });
-      if (existingUser) {
-        return next(
-          new ErrorResponse("Email is already in use by another account", 400),
-        );
-      }
-    }
-
-    user.email = email.toLowerCase();
-  }
-
-  // Update phone if provided
-  if (phone !== undefined) {
-    user.phone = phone || null;
-  }
-
   // Update profile photo if provided
   if (profilePhoto !== undefined) {
     user.profilePhoto = profilePhoto;
   }
 
-  // Save updated user
-  await user.save();
+  // Save updated user (skip validation for existing users without required fields)
+  await user.save({ validateBeforeSave: false });
 
   res.status(200).json({
     success: true,
@@ -185,6 +170,9 @@ export const updateProfile = asyncHandler(async (req, res, next) => {
       profilePhoto: user.profilePhoto,
       phone: user.phone,
       authProvider: user.authProvider,
+      accountType: user.accountType || "free",
+      contactViewsUsed: user.contactViewsUsed || 0,
+      propertiesListedThisMonth: user.propertiesListedThisMonth || 0,
       createdAt: user.createdAt,
     },
   });
@@ -232,7 +220,7 @@ export const sendOtp = asyncHandler(async (req, res, next) => {
 // @route   POST /api/auth/verify-otp
 // @access  Public
 export const verifyOtp = asyncHandler(async (req, res, next) => {
-  const { phoneNumber, otp, name, role } = req.body;
+  const { phoneNumber, otp } = req.body;
 
   // Validate required fields
   if (!phoneNumber || !otp) {
@@ -253,33 +241,23 @@ export const verifyOtp = asyncHandler(async (req, res, next) => {
   }
 
   // Check if user exists with this phone number
-  let user = await User.findOne({ phone: normalizedPhone });
+  const user = await User.findOne({ phone: normalizedPhone });
 
   if (user) {
     // Existing user - login
     user.phoneVerified = true;
-    await user.save();
+    // Use validateBeforeSave: false to avoid triggering validation for existing users
+    // This is necessary because old users might not have the 'city' field
+    await user.save({ validateBeforeSave: false });
     sendTokenResponse(user, 200, res);
   } else {
-    // New user - register
-    if (!name) {
-      return next(
-        new ErrorResponse(
-          "Please provide your name to complete registration",
-          400,
-        ),
-      );
-    }
-
-    user = await User.create({
-      name,
+    // New user - return flag to complete signup
+    res.status(200).json({
+      success: true,
+      needsSignup: true,
       phone: normalizedPhone,
-      phoneVerified: true,
-      authProvider: "phone",
-      role: role || "guest",
+      message: "Phone verified. Please complete your profile.",
     });
-
-    sendTokenResponse(user, 201, res);
   }
 });
 
@@ -289,7 +267,7 @@ export const verifyOtp = asyncHandler(async (req, res, next) => {
 // @route   POST /api/auth/google-login
 // @access  Public
 export const googleLogin = asyncHandler(async (req, res, next) => {
-  const { credential, role } = req.body;
+  const { credential } = req.body;
 
   // Validate credential
   if (!credential) {
@@ -308,7 +286,23 @@ export const googleLogin = asyncHandler(async (req, res, next) => {
   let user = await User.findOne({ googleId: googleUser.googleId });
 
   if (user) {
-    // Existing user - login
+    // Existing user - check if they have phone
+    if (!user.phone) {
+      // User exists but needs phone verification (edge case)
+      return res.status(200).json({
+        success: true,
+        needsPhoneVerification: true,
+        googleData: {
+          googleId: googleUser.googleId,
+          email: googleUser.email,
+          name: googleUser.name,
+          profilePhoto: googleUser.profilePhoto,
+        },
+        message: "Please verify your phone number to complete signup.",
+      });
+    }
+
+    // User has phone - login
     // Update profile photo if changed
     if (user.profilePhoto !== googleUser.profilePhoto) {
       user.profilePhoto = googleUser.profilePhoto;
@@ -316,27 +310,71 @@ export const googleLogin = asyncHandler(async (req, res, next) => {
     }
     sendTokenResponse(user, 200, res);
   } else {
-    // Check if email already exists with different auth provider
-    const existingEmailUser = await User.findOne({ email: googleUser.email });
+    // New user - requires phone verification before creating account
+    res.status(200).json({
+      success: true,
+      needsPhoneVerification: true,
+      googleData: {
+        googleId: googleUser.googleId,
+        email: googleUser.email,
+        name: googleUser.name,
+        profilePhoto: googleUser.profilePhoto,
+      },
+      message: "Please verify your phone number to complete signup.",
+    });
+  }
+});
+
+// @desc    Complete signup with name and city
+// @route   POST /api/auth/complete-signup
+// @access  Public
+export const completeSignup = asyncHandler(async (req, res, next) => {
+  const { phone, name, city, googleId, email, profilePhoto, role } = req.body;
+
+  // Validate required fields
+  if (!phone || !name || !city) {
+    return next(new ErrorResponse("Please provide phone, name, and city", 400));
+  }
+
+  // Normalize phone number
+  let normalizedPhone = phone.trim();
+  if (!normalizedPhone.startsWith("+91")) {
+    normalizedPhone = `+91${normalizedPhone.replace(/^0+/, "")}`;
+  }
+
+  // Check if user already exists with this phone
+  const existingUser = await User.findOne({ phone: normalizedPhone });
+  if (existingUser) {
+    return next(
+      new ErrorResponse("User already exists with this phone number", 400),
+    );
+  }
+
+  // Check if email already exists (for Google users)
+  if (email) {
+    const existingEmailUser = await User.findOne({ email });
     if (existingEmailUser) {
       return next(
-        new ErrorResponse(
-          `An account with this email already exists using ${existingEmailUser.authProvider} authentication. Please login with ${existingEmailUser.authProvider}.`,
-          400,
-        ),
+        new ErrorResponse("User already exists with this email", 400),
       );
     }
-
-    // New user - register
-    user = await User.create({
-      name: googleUser.name,
-      email: googleUser.email,
-      googleId: googleUser.googleId,
-      profilePhoto: googleUser.profilePhoto,
-      authProvider: "google",
-      role: role || "guest",
-    });
-
-    sendTokenResponse(user, 201, res);
   }
+
+  // Determine auth provider
+  const authProvider = googleId ? "google" : "phone";
+
+  // Create new user
+  const user = await User.create({
+    name: name.trim(),
+    city: city.trim(),
+    phone: normalizedPhone,
+    phoneVerified: true,
+    email: email || undefined,
+    googleId: googleId || undefined,
+    profilePhoto: profilePhoto || "",
+    authProvider,
+    role: role || "guest",
+  });
+
+  sendTokenResponse(user, 201, res);
 });
