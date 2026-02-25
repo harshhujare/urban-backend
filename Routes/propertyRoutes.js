@@ -9,7 +9,10 @@ import {
   getUserProperties,
   getOwnerContact,
   getPropertyStats,
+  toggleLike,
+  getLikeStatus,
 } from "../Controllers/propertyController.js";
+
 import { protect, authorize } from "../middleware/auth.js";
 
 const router = express.Router();
@@ -29,6 +32,10 @@ router.get("/:id/contact", protect, getOwnerContact);
 
 // Get property analytics/stats (owner only)
 router.get("/:id/stats", protect, getPropertyStats);
+
+// Like/Unlike a property (authenticated users)
+router.post("/:id/like", protect, toggleLike);
+router.get("/:id/like-status", protect, getLikeStatus);
 
 // Single property route (must be after /my and /:id/contact and /:id/stats)
 router.get("/:id", getProperty);

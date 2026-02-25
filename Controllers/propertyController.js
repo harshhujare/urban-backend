@@ -432,3 +432,64 @@ export const getPropertyStats = asyncHandler(async (req, res, next) => {
     },
   });
 });
+
+// @desc    Toggle like on a property (like/unlike)
+// @route   POST /api/properties/:id/like
+// @access  Private
+export const toggleLike = asyncHandler(async (req, res, next) => {
+  const property = await Property.findById(req.params.id).select(
+    "likedBy likes hostId",
+  );
+
+  if (!property) {
+    return next(new ErrorResponse("Property not found", 404));
+  }
+
+  const userId = req.user.id;
+  const alreadyLiked = property.likedBy.some((id) => id.toString() === userId);
+
+  if (alreadyLiked) {
+    // Unlike: remove user from likedBy and decrement likes
+    await Property.findByIdAndUpdate(req.params.id, {
+      $pull: { likedBy: userId },
+      $inc: { likes: -1 },
+    });
+    return res.status(200).json({
+      success: true,
+      liked: false,
+      likesCount: Math.max(0, (property.likes || 1) - 1),
+    });
+  } else {
+    // Like: add user to likedBy and increment likes
+    await Property.findByIdAndUpdate(req.params.id, {
+      $addToSet: { likedBy: userId },
+      $inc: { likes: 1 },
+    });
+    return res.status(200).json({
+      success: true,
+      liked: true,
+      likesCount: (property.likes || 0) + 1,
+    });
+  }
+});
+
+// @desc    Get like status for current user on a property
+// @route   GET /api/properties/:id/like-status
+// @access  Private
+export const getLikeStatus = asyncHandler(async (req, res, next) => {
+  const property = await Property.findById(req.params.id).select(
+    "likedBy likes",
+  );
+
+  if (!property) {
+    return next(new ErrorResponse("Property not found", 404));
+  }
+
+  const liked = property.likedBy.some((id) => id.toString() === req.user.id);
+
+  res.status(200).json({
+    success: true,
+    liked,
+    likesCount: property.likes || 0,
+  });
+});
