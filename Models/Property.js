@@ -126,6 +126,7 @@ propertySchema.index({ title: "text", description: "text" });
 
 // Compound index for common search patterns
 propertySchema.index({ "location.city": 1, price: 1, maxGuests: 1 });
+propertySchema.index({ "location.city": 1, bedrooms: 1, price: 1 });
 propertySchema.index({ hostId: 1 });
 
 const Property = mongoose.model("Property", propertySchema);

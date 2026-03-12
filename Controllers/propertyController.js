@@ -11,6 +11,11 @@ export const getProperties = asyncHandler(async (req, res, next) => {
   const { city, minPrice, maxPrice, amenities, bedrooms, q, guests, sortBy } =
     req.query;
 
+  // Pagination
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 20;
+  const skip = (page - 1) * limit;
+
   // Build query
   let query = {};
 
@@ -51,17 +56,34 @@ export const getProperties = asyncHandler(async (req, res, next) => {
   let sortCriteria = "-createdAt"; // Default: newest first
   if (sortBy === "price_asc") sortCriteria = "price";
   if (sortBy === "price_desc") sortCriteria = "-price";
-  if (q) sortCriteria = { score: { $meta: "textScore" }, ...sortCriteria }; // Text search relevance
+  if (q) sortCriteria = { score: { $meta: "textScore" } }; // Text search relevance
+
+  const total = await Property.countDocuments(query);
 
   const properties = await Property.find(query)
     .populate("hostId", "name email profilePicture")
     .sort(sortCriteria)
+    .skip(skip)
+    .limit(limit)
     .select(q ? { score: { $meta: "textScore" } } : {});
 
   res.status(200).json({
     success: true,
-    count: properties.length,
+    count: total,
+    page,
+    totalPages: Math.ceil(total / limit),
     data: properties,
+  });
+});
+
+// @desc    Get distinct cities that have property listings
+// @route   GET /api/properties/cities
+// @access  Public
+export const getCities = asyncHandler(async (req, res, next) => {
+  const cities = await Property.distinct("location.city");
+  res.status(200).json({
+    success: true,
+    data: cities.sort(),
   });
 });
 

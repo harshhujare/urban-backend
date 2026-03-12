@@ -11,6 +11,7 @@ import {
   getPropertyStats,
   toggleLike,
   getLikeStatus,
+  getCities,
 } from "../Controllers/propertyController.js";
 
 import { protect, authorize } from "../middleware/auth.js";
@@ -19,6 +20,7 @@ const router = express.Router();
 
 // Public routes
 router.get("/", getProperties);
+router.get("/cities", getCities); // Must be before /:id
 
 // Protected routes - must come before /:id to avoid conflicts
 router.get("/my", protect, getMyProperties);
