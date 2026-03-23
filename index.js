@@ -53,6 +53,8 @@ import authRoutes from "./Routes/authRoutes.js";
 import propertyRoutes from "./Routes/propertyRoutes.js";
 import uploadRoutes from "./Routes/uploadRoutes.js";
 import paymentRoutes from "./Routes/paymentRoutes.js";
+import adminRoutes from "./Routes/adminRoutes.js";
+import reviewRoutes from "./Routes/reviewRoutes.js";
 
 // Auth routes
 app.use("/api/auth", authRoutes);
@@ -65,6 +67,12 @@ app.use("/api/upload", uploadRoutes);
 
 // Payment routes
 app.use("/api/payment", paymentRoutes);
+
+// Admin routes
+app.use("/api/admin", adminRoutes);
+
+// Review routes
+app.use("/api/reviews", reviewRoutes);
 
 // Future routes
 // app.use("/api/bookings", bookingRoutes);

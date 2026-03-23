@@ -88,6 +88,12 @@ const propertySchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // Admin moderation status
+    adminStatus: {
+      type: String,
+      enum: ["active", "suspended", "pending_review"],
+      default: "active",
+    },
     // Analytics fields
     views: {
       type: Number,

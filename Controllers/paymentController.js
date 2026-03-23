@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import razorpay from "../config/razorpay.js";
 import User from "../Models/User.js";
+import Transaction from "../Models/Transaction.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import ErrorResponse from "../utils/ErrorResponse.js";
 
@@ -58,6 +59,16 @@ export const verifyPayment = asyncHandler(async (req, res, next) => {
     .digest("hex");
 
   if (expectedSignature !== razorpay_signature) {
+    // Save failed transaction record
+    await Transaction.create({
+      userId: req.user._id,
+      razorpay_order_id,
+      razorpay_payment_id,
+      amount: 100,
+      currency: "INR",
+      purpose: "premium_upgrade",
+      status: "failed",
+    });
     return next(new ErrorResponse("Payment verification failed", 400));
   }
 
@@ -65,6 +76,17 @@ export const verifyPayment = asyncHandler(async (req, res, next) => {
   const user = await User.findById(req.user._id);
   user.accountType = "premium";
   await user.save({ validateBeforeSave: false });
+
+  // Save successful transaction record
+  await Transaction.create({
+    userId: req.user._id,
+    razorpay_order_id,
+    razorpay_payment_id,
+    amount: 100,
+    currency: "INR",
+    purpose: "premium_upgrade",
+    status: "success",
+  });
 
   res.status(200).json({
     success: true,
