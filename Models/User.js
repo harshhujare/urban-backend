@@ -41,13 +41,15 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "", // Cloudinary URL (Week 3)
     },
-    // Phone verification fields (required for all users)
+    // Phone verification fields (optional - users can add phone later)
     phone: {
       type: String,
-      required: [true, "Phone number is required"],
+      required: false, // Phone is now optional for Google-only signups
       unique: true,
+      sparse: true, // Allows null values while maintaining uniqueness
       validate: {
         validator: function (v) {
+          if (!v) return true; // Allow null/empty
           // Validate India format: +91 followed by 10 digits
           return /^\+91[0-9]{10}$/.test(v);
         },

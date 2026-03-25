@@ -7,6 +7,7 @@ import {
   verifyOtp,
   googleLogin,
   completeSignup,
+  linkPhone,
 } from "../Controllers/authController.js";
 import { protect } from "../middleware/auth.js";
 
@@ -28,5 +29,6 @@ router.post("/complete-signup", completeSignup);
 router.post("/logout", protect, logout);
 router.get("/me", protect, getMe);
 router.put("/me", protect, updateProfile);
+router.post("/link-phone", protect, linkPhone);
 
 export default router;

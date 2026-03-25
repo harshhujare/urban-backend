@@ -120,6 +120,7 @@ export const getMe = asyncHandler(async (req, res, next) => {
       role: user.role,
       profilePhoto: user.profilePhoto,
       phone: user.phone,
+      phoneVerified: user.phoneVerified || false,
       authProvider: user.authProvider,
       accountType: user.accountType || "free",
       contactViewsUsed: user.contactViewsUsed || 0,
@@ -171,6 +172,7 @@ export const updateProfile = asyncHandler(async (req, res, next) => {
       role: user.role,
       profilePhoto: user.profilePhoto,
       phone: user.phone,
+      phoneVerified: user.phoneVerified || false,
       authProvider: user.authProvider,
       accountType: user.accountType || "free",
       contactViewsUsed: user.contactViewsUsed || 0,
@@ -284,46 +286,40 @@ export const googleLogin = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse("Invalid Google credential", 401));
   }
 
-  // Check if user exists with this Google ID
-  let user = await User.findOne({ googleId: googleUser.googleId });
+  // Check if user exists with this Google ID or email
+  let user = await User.findOne({
+    $or: [
+      { googleId: googleUser.googleId },
+      { email: googleUser.email },
+    ],
+  });
 
   if (user) {
-    // Existing user - check if they have phone
-    if (!user.phone) {
-      // User exists but needs phone verification (edge case)
-      return res.status(200).json({
-        success: true,
-        needsPhoneVerification: true,
-        googleData: {
-          googleId: googleUser.googleId,
-          email: googleUser.email,
-          name: googleUser.name,
-          profilePhoto: googleUser.profilePhoto,
-        },
-        message: "Please verify your phone number to complete signup.",
-      });
-    }
-
-    // User has phone - login
+    // Existing user - login directly
     // Update profile photo if changed
     if (user.profilePhoto !== googleUser.profilePhoto) {
       user.profilePhoto = googleUser.profilePhoto;
-      await user.save({ validateBeforeSave: false });
     }
-    sendTokenResponse(user, 200, res);
+    // Ensure googleId is set (in case they matched by email)
+    if (!user.googleId) {
+      user.googleId = googleUser.googleId;
+    }
+    await user.save({ validateBeforeSave: false });
+    sendTokenResponse(user, 200, res, { isNewUser: false });
   } else {
-    // New user - requires phone verification before creating account
-    res.status(200).json({
-      success: true,
-      needsPhoneVerification: true,
-      googleData: {
-        googleId: googleUser.googleId,
-        email: googleUser.email,
-        name: googleUser.name,
-        profilePhoto: googleUser.profilePhoto,
-      },
-      message: "Please verify your phone number to complete signup.",
+    // New user - create account immediately (no phone required)
+    const newUser = await User.create({
+      name: googleUser.name,
+      email: googleUser.email,
+      googleId: googleUser.googleId,
+      profilePhoto: googleUser.profilePhoto,
+      authProvider: "google",
+      role: "guest",
+      city: "Not set",
+      phoneVerified: false,
     });
+
+    sendTokenResponse(newUser, 201, res, { isNewUser: true });
   }
 });
 
@@ -334,22 +330,25 @@ export const completeSignup = asyncHandler(async (req, res, next) => {
   const { phone, name, city, googleId, email, profilePhoto, role } = req.body;
 
   // Validate required fields
-  if (!phone || !name || !city) {
-    return next(new ErrorResponse("Please provide phone, name, and city", 400));
+  if (!name || !city) {
+    return next(new ErrorResponse("Please provide name and city", 400));
   }
 
-  // Normalize phone number
-  let normalizedPhone = phone.trim();
-  if (!normalizedPhone.startsWith("+91")) {
-    normalizedPhone = `+91${normalizedPhone.replace(/^0+/, "")}`;
-  }
+  // Normalize phone number if provided
+  let normalizedPhone = null;
+  if (phone) {
+    normalizedPhone = phone.trim();
+    if (!normalizedPhone.startsWith("+91")) {
+      normalizedPhone = `+91${normalizedPhone.replace(/^0+/, "")}`;
+    }
 
-  // Check if user already exists with this phone
-  const existingUser = await User.findOne({ phone: normalizedPhone });
-  if (existingUser) {
-    return next(
-      new ErrorResponse("User already exists with this phone number", 400),
-    );
+    // Check if user already exists with this phone
+    const existingUser = await User.findOne({ phone: normalizedPhone });
+    if (existingUser) {
+      return next(
+        new ErrorResponse("User already exists with this phone number", 400),
+      );
+    }
   }
 
   // Check if email already exists (for Google users)
@@ -369,8 +368,8 @@ export const completeSignup = asyncHandler(async (req, res, next) => {
   const user = await User.create({
     name: name.trim(),
     city: city.trim(),
-    phone: normalizedPhone,
-    phoneVerified: true,
+    phone: normalizedPhone || undefined,
+    phoneVerified: !!normalizedPhone,
     email: email || undefined,
     googleId: googleId || undefined,
     profilePhoto: profilePhoto || "",
@@ -379,4 +378,49 @@ export const completeSignup = asyncHandler(async (req, res, next) => {
   });
 
   sendTokenResponse(user, 201, res);
+});
+
+// ==================== LINK PHONE TO EXISTING ACCOUNT ====================
+
+// @desc    Link and verify phone number for logged-in user
+// @route   POST /api/auth/link-phone
+// @access  Private
+export const linkPhone = asyncHandler(async (req, res, next) => {
+  const { phoneNumber, otp } = req.body;
+
+  if (!phoneNumber || !otp) {
+    return next(new ErrorResponse("Please provide phone number and OTP", 400));
+  }
+
+  // Normalize phone number
+  let normalizedPhone = phoneNumber.trim();
+  if (!normalizedPhone.startsWith("+91")) {
+    normalizedPhone = `+91${normalizedPhone.replace(/^0+/, "")}`;
+  }
+
+  // Verify OTP
+  const otpResult = verifyOTPCode(normalizedPhone, otp.toString());
+  if (!otpResult.verified) {
+    return next(new ErrorResponse(otpResult.message, 400));
+  }
+
+  // Check if phone is already used by another user
+  const existingUser = await User.findOne({ phone: normalizedPhone });
+  if (existingUser && existingUser._id.toString() !== req.user.id) {
+    return next(
+      new ErrorResponse("This phone number is already linked to another account", 400),
+    );
+  }
+
+  // Update the current user's phone
+  const user = await User.findById(req.user.id);
+  if (!user) {
+    return next(new ErrorResponse("User not found", 404));
+  }
+
+  user.phone = normalizedPhone;
+  user.phoneVerified = true;
+  await user.save({ validateBeforeSave: false });
+
+  sendTokenResponse(user, 200, res);
 });
