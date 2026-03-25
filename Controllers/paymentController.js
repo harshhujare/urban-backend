@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import razorpay from "../config/razorpay.js";
+import getRazorpay from "../config/razorpay.js";
 import User from "../Models/User.js";
 import Transaction from "../Models/Transaction.js";
 import asyncHandler from "../utils/asyncHandler.js";
@@ -9,6 +9,16 @@ import ErrorResponse from "../utils/ErrorResponse.js";
 // @route   POST  /api/payment/create-order
 // @access  Private
 export const createOrder = asyncHandler(async (req, res, next) => {
+  const razorpay = getRazorpay();
+  if (!razorpay) {
+    return next(
+      new ErrorResponse(
+        "Payment service is not configured. Please try again later.",
+        503,
+      ),
+    );
+  }
+
   const user = req.user;
 
   // Check if already premium
@@ -43,6 +53,16 @@ export const createOrder = asyncHandler(async (req, res, next) => {
 // @route   POST /api/payment/verify
 // @access  Private
 export const verifyPayment = asyncHandler(async (req, res, next) => {
+  const razorpay = getRazorpay();
+  if (!razorpay) {
+    return next(
+      new ErrorResponse(
+        "Payment service is not configured. Please try again later.",
+        503,
+      ),
+    );
+  }
+
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
     req.body;
 
