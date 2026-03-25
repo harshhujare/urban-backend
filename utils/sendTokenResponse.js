@@ -15,7 +15,7 @@ const sendTokenResponse = (user, statusCode, res) => {
     ),
     httpOnly: true, // Prevents client-side JS from reading the cookie (XSS protection)
     secure: process.env.NODE_ENV === "production", // Use HTTPS in production
-    sameSite: "strict", // CSRF protection
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // "none" for cross-origin in production (Vercel+Render)
   };
 
   // Send response with cookie and user data

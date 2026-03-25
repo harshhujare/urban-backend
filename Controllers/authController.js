@@ -90,6 +90,8 @@ export const logout = asyncHandler(async (req, res, next) => {
   res.cookie("token", "none", {
     expires: new Date(Date.now() + 10 * 1000), // 10 seconds
     httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
   });
 
   res.status(200).json({
@@ -306,7 +308,7 @@ export const googleLogin = asyncHandler(async (req, res, next) => {
     // Update profile photo if changed
     if (user.profilePhoto !== googleUser.profilePhoto) {
       user.profilePhoto = googleUser.profilePhoto;
-      await user.save();
+      await user.save({ validateBeforeSave: false });
     }
     sendTokenResponse(user, 200, res);
   } else {
