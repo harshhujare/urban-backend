@@ -1,11 +1,25 @@
 import multer from "multer";
 import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 import ErrorResponse from "../utils/ErrorResponse.js";
+
+// Resolve __dirname in ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Absolute path to the uploads directory (backend/uploads/)
+const uploadsDir = path.resolve(__dirname, "..", "uploads");
+
+// Ensure the uploads directory exists (critical for production environments)
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 // Use disk storage to save files temporarily
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "uploads/"); // Temporary folder
+    cb(null, uploadsDir); // Use absolute path
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);

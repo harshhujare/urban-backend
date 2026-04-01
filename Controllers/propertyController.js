@@ -126,6 +126,13 @@ export const getProperty = asyncHandler(async (req, res, next) => {
 // @route   POST /api/properties
 // @access  Private (Guest can create, will auto-upgrade to Host)
 export const createProperty = asyncHandler(async (req, res, next) => {
+  // Require phone verification before listing
+  if (!req.user.phoneVerified) {
+    return next(
+      new ErrorResponse("Please verify your phone number before listing a property", 403),
+    );
+  }
+
   // Reset monthly counters if needed
   await req.user.resetMonthlyCountersIfNeeded();
 
@@ -361,6 +368,13 @@ export const getUserProperties = asyncHandler(async (req, res, next) => {
 // @route   GET /api/properties/:id/contact
 // @access  Private
 export const getOwnerContact = asyncHandler(async (req, res, next) => {
+  // Require phone verification before viewing contact
+  if (!req.user.phoneVerified) {
+    return next(
+      new ErrorResponse("Please verify your phone number to view owner contact details", 403),
+    );
+  }
+
   // Find the property and populate host phone
   const property = await Property.findById(req.params.id).populate(
     "hostId",
